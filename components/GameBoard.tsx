@@ -8,15 +8,18 @@ import {
   workTitle,
   DIFFICULTY_OPTIONS,
   GENDER_OPTIONS,
+  WORKS_OPTIONS,
   type Difficulty,
   type GenderFilter,
   type SeiyuuWithDisplay,
+  type WorksFilter,
 } from "@/lib/data";
 import { compare, type GuessResult } from "@/lib/game";
 import GuessInput from "./GuessInput";
 import GuessTable from "./GuessTable";
 
-const STORAGE_KEY = "seiyuu-game-v4";
+// v5：存档新增 works（作品范围）字段
+const STORAGE_KEY = "seiyuu-game-v5";
 
 type Status = "playing" | "won" | "lost" | "gaveUp";
 
@@ -26,6 +29,7 @@ interface SaveState {
   difficulty: Difficulty;
   limit: number;
   gender: GenderFilter;
+  works: WorksFilter;
   status: Status;
 }
 
@@ -33,14 +37,19 @@ interface Props {
   difficulty: Difficulty;
   limit: number;
   gender: GenderFilter;
+  works: WorksFilter;
 }
 
-export default function GameBoard({ difficulty, limit, gender }: Props) {
-  const pool = useMemo(() => poolFor(difficulty, gender), [difficulty, gender]);
+export default function GameBoard({ difficulty, limit, gender, works }: Props) {
+  const pool = useMemo(
+    () => poolFor(difficulty, gender, works),
+    [difficulty, gender, works]
+  );
   const [state, setState] = useState<SaveState | null>(null);
 
   const difficultyLabel = DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.label;
   const genderLabel = GENDER_OPTIONS.find((o) => o.key === gender)?.label;
+  const worksLabel = WORKS_OPTIONS.find((o) => o.key === works)?.label;
 
   function newGame(): SaveState {
     return {
@@ -49,6 +58,7 @@ export default function GameBoard({ difficulty, limit, gender }: Props) {
       difficulty,
       limit,
       gender,
+      works,
       status: "playing",
     };
   }
@@ -63,6 +73,7 @@ export default function GameBoard({ difficulty, limit, gender }: Props) {
           saved.difficulty === difficulty &&
           saved.limit === limit &&
           saved.gender === gender &&
+          saved.works === works &&
           pool.some((s) => s.id === saved.answerId)
         ) {
           setState({
@@ -77,7 +88,7 @@ export default function GameBoard({ difficulty, limit, gender }: Props) {
     }
     setState(newGame());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [difficulty, limit, gender, pool]);
+  }, [difficulty, limit, gender, works, pool]);
 
   useEffect(() => {
     if (state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -88,9 +99,9 @@ export default function GameBoard({ difficulty, limit, gender }: Props) {
   const results: GuessResult[] = useMemo(() => {
     if (!state || !answer) return [];
     return state.guesses
-      .map((id) => compare(seiyuuById.get(id)!, answer))
+      .map((id) => compare(seiyuuById.get(id)!, answer, works))
       .reverse(); // 最新猜测置顶
-  }, [state, answer]);
+  }, [state, answer, works]);
 
   if (!state || !answer) {
     return <p className="text-center text-zinc-500">加载中…</p>;
@@ -115,7 +126,8 @@ export default function GameBoard({ difficulty, limit, gender }: Props) {
       <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-zinc-400">
         <span className="rounded border border-zinc-700 px-2 py-1 text-xs">
           难度：{difficultyLabel}
-          {gender !== "all" && ` · ${genderLabel}`} · 答案池 {pool.length} 人
+          {gender !== "all" && ` · ${genderLabel}`}
+          {works !== "all" && ` · ${worksLabel}`} · 答案池 {pool.length} 人
         </span>
         <span>
           已猜 {state.guesses.length} 次
@@ -184,9 +196,22 @@ export default function GameBoard({ difficulty, limit, gender }: Props) {
             </div>
           </div>
           <p className="mt-8 border-t border-zinc-800 pt-6 text-center text-sm text-zinc-400">
-            「热门作品」列中，<span className="font-medium text-emerald-400">亮绿词条</span> =
-            与答案共同出演，<span className="font-medium text-amber-300">亮黄词条</span> =
-            同系列作品，命中的词条会自动排到最前
+            「{works === "game" ? "热门游戏" : works === "anime" ? "热门动画" : "热门作品"}」列中，
+            <span className="font-medium text-emerald-400">亮绿词条</span> = 与答案共同出演，
+            {works !== "game" && (
+              <>
+                <span className="font-medium text-amber-300">亮黄词条</span> = 同系列作品，
+              </>
+            )}
+            命中的词条会自动排到最前
+            {works === "all" && (
+              <>
+                ；作品含动画与游戏，游戏词条带
+                <span className="mx-0.5 rounded-sm bg-sky-500/25 px-0.5 text-[10px] leading-none text-sky-300">游</span>
+                标记
+              </>
+            )}
+            {works === "game" && "；本局仅游戏作品（无同系列提示）"}
           </p>
         </div>
       )}
@@ -211,7 +236,16 @@ export default function GameBoard({ difficulty, limit, gender }: Props) {
               <div>{answer.name_native}</div>
               <div>{answer.name_romaji}</div>
               <div className="mt-1 text-xs text-zinc-500">
-                {answer.works.slice(0, 3).map((w) => workTitle(w)).join("、")}
+                {[
+                  ...(works === "game" ? [] : answer.works.map((w) => workTitle(w))),
+                  ...(works === "anime"
+                    ? []
+                    : answer.game_works.map((g) =>
+                        works === "game" ? workTitle(g) : `${workTitle(g)}（游）`
+                      )),
+                ]
+                  .slice(0, 3)
+                  .join("、")}
               </div>
               {answer.url && (
                 <a
@@ -228,7 +262,7 @@ export default function GameBoard({ difficulty, limit, gender }: Props) {
         </div>
       )}
 
-      <GuessTable results={results} />
+      <GuessTable results={results} works={works} />
     </div>
   );
 }

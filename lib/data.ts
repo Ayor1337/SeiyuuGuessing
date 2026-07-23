@@ -12,6 +12,20 @@ export interface Work {
   series_id: number;
 }
 
+/**
+ * 游戏作品（bgm.tv 数据源）。与动画分开存放：id 是 bgm.tv subject id，
+ * 与 Work.id（AniList media id）属不同 id 空间，不可混用比对。
+ * popularity 是 bgm 评分人数；series_id 预留（暂无游戏系列聚类，等于自身 id）
+ */
+export interface GameWork {
+  id: number;
+  title_native: string | null;
+  title_zh: string | null;
+  year: number | null;
+  popularity: number | null;
+  series_id: number;
+}
+
 export interface Seiyuu {
   id: number;
   name_romaji: string | null;
@@ -25,8 +39,10 @@ export interface Seiyuu {
   favourites: number;
   image: string | null;
   url: string | null;
-  /** 热门作品，按人气降序 */
+  /** 热门动画作品，按人气降序 */
   works: Work[];
+  /** 热门游戏作品（bgm.tv），按 bgm 评分人数降序 */
+  game_works: GameWork[];
 }
 
 interface WebData {
@@ -48,9 +64,30 @@ export const seiyuuList: SeiyuuWithDisplay[] = raw.map((s) => ({
 
 export const seiyuuById = new Map(seiyuuList.map((s) => [s.id, s]));
 
-/** 答案池：作品数过少或关键属性缺失的声优不适合出题（按人气降序） */
+/** 作品范围（开局可选）：不限（动画+游戏）/ 仅动画 / 仅游戏 */
+export type WorksFilter = "all" | "anime" | "game";
+
+export interface WorksOption {
+  key: WorksFilter;
+  label: string;
+}
+
+export const WORKS_OPTIONS: WorksOption[] = [
+  { key: "all", label: "动画 + 游戏" },
+  { key: "anime", label: "仅动画" },
+  { key: "game", label: "仅游戏" },
+];
+
+/** 作品数门槛：保证出题质量（仅动画看动画、仅游戏看游戏、不限看合计） */
+function hasEnoughWorks(s: SeiyuuWithDisplay, works: WorksFilter): boolean {
+  if (works === "anime") return s.works.length >= 3;
+  if (works === "game") return s.game_works.length >= 3;
+  return s.works.length + s.game_works.length >= 3;
+}
+
+/** 不限模式下的全量答案池（按人气降序） */
 export const answerPool = seiyuuList.filter(
-  (s) => s.works.length >= 3 && s.gender && s.birth_year
+  (s) => hasEnoughWorks(s, "all") && s.gender && s.birth_year
 );
 
 export type Difficulty = "easy" | "normal" | "hard";
@@ -84,15 +121,24 @@ export const GENDER_OPTIONS: GenderOption[] = [
 
 export function poolFor(
   difficulty: Difficulty,
-  gender: GenderFilter = "all"
+  gender: GenderFilter = "all",
+  works: WorksFilter = "all"
 ): SeiyuuWithDisplay[] {
   const opt = DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)!;
-  const pool = answerPool.slice(0, opt.size);
+  // 先按作品范围过滤（seiyuuList 按人气降序），再截难度名额，保证各模式人数达标
+  const eligible = seiyuuList.filter(
+    (s) => hasEnoughWorks(s, works) && s.gender && s.birth_year
+  );
+  const pool = eligible.slice(0, opt.size);
   return gender === "all" ? pool : pool.filter((s) => s.gender === gender);
 }
 
-/** 作品展示名：优先简体中文，其次日文原名，最后罗马音 */
-export function workTitle(w: Work): string {
+/** 作品展示名：优先简体中文，其次日文原名，最后罗马音（动画/游戏通用） */
+export function workTitle(w: {
+  title_zh: string | null;
+  title_native: string | null;
+  title_romaji?: string | null;
+}): string {
   return w.title_zh ?? w.title_native ?? w.title_romaji ?? "";
 }
 

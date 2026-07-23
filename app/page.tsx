@@ -5,9 +5,11 @@ import Link from "next/link";
 import {
   DIFFICULTY_OPTIONS,
   GENDER_OPTIONS,
+  WORKS_OPTIONS,
   poolFor,
   type Difficulty,
   type GenderFilter,
+  type WorksFilter,
 } from "@/lib/data";
 
 const LIMIT_OPTIONS = [
@@ -25,6 +27,7 @@ export default function Home() {
   const [difficulty, setDifficulty] = useState<Difficulty>("normal");
   const [limit, setLimit] = useState(8);
   const [gender, setGender] = useState<GenderFilter>("all");
+  const [works, setWorks] = useState<WorksFilter>("all");
 
   return (
     <main className="mx-auto flex min-h-[85vh] max-w-2xl flex-col items-center justify-center px-4 py-10">
@@ -60,8 +63,38 @@ export default function Home() {
                   </div>
                   <div className="mt-1 text-xs text-zinc-400">{o.desc}</div>
                   <div className="mt-2 text-xs text-zinc-500">
-                    答案池 {poolFor(o.key, gender).length} 人
+                    答案池 {poolFor(o.key, gender, works).length} 人
                   </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <fieldset className="mb-6 w-full">
+        <legend className="mb-3 text-sm font-medium text-zinc-300">作品范围</legend>
+        <div className="flex gap-2">
+          {WORKS_OPTIONS.map((o) => {
+            const active = works === o.key;
+            return (
+              <label key={o.key} className="flex-1 cursor-pointer">
+                <input
+                  type="radio"
+                  name="works"
+                  value={o.key}
+                  checked={active}
+                  onChange={() => setWorks(o.key)}
+                  className="peer sr-only"
+                />
+                <div
+                  className={`rounded-lg border px-3 py-2 text-center text-sm transition-colors ${focusRing} ${
+                    active
+                      ? "border-emerald-500 bg-emerald-600/20 text-emerald-400"
+                      : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                  }`}
+                >
+                  {o.label}
                 </div>
               </label>
             );
@@ -130,7 +163,7 @@ export default function Home() {
       </fieldset>
 
       <Link
-        href={`/play?d=${difficulty}&limit=${limit}&g=${gender}`}
+        href={`/play?d=${difficulty}&limit=${limit}&g=${gender}&w=${works}`}
         className="w-full rounded-lg bg-emerald-600 py-3 text-center text-lg font-bold text-white transition-colors hover:bg-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 focus-visible:outline-none"
       >
         开始游戏
