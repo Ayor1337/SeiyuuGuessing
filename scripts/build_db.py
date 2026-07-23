@@ -3,6 +3,7 @@
 输入:
     data/seiyuu.json   声优基础数据（AniList）
     data/i18n.json     译名表（可选，缺省时跳过译名与 bangumi_id）
+    data/games.json    游戏出演数据（可选，bgm.tv；缺省时 games 表为空）
 
 幂等：每次运行全量重建。修改数据结构请改 SCHEMA 并重跑本脚本。
 
@@ -19,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SEIYUU_PATH = ROOT / "data" / "seiyuu.json"
 I18N_PATH = ROOT / "data" / "i18n.json"
 SERIES_PATH = ROOT / "data" / "series.json"
+GAMES_PATH = ROOT / "data" / "games.json"
 DB_PATH = ROOT / "data" / "seiyuu.db"
 
 SCHEMA = """
@@ -90,6 +92,25 @@ CREATE TABLE seiyuu_roles (
     PRIMARY KEY (seiyuu_id, character_id, anime_id)
 ) WITHOUT ROWID;
 
+-- 游戏作品（bgm.tv subject，与 anime 表是不同的 id 空间，分开存放不混用）
+CREATE TABLE games (
+    id           INTEGER PRIMARY KEY,  -- bgm.tv subject id
+    title        TEXT,                 -- 原名（多为日文）
+    title_zh     TEXT,                 -- bgm name_cn（社区维护的中文名）
+    year         INTEGER,              -- 发行年（date 解析）
+    rating_total INTEGER,              -- 评分人数，作人气代理
+    series_id    INTEGER               -- 预留：默认=自身 id，供将来的游戏系列聚类
+);
+
+-- 声优的热门游戏（与 seiyuu_works 平行），rank = 1 最热门
+CREATE TABLE seiyuu_game_works (
+    seiyuu_id INTEGER NOT NULL REFERENCES seiyuu(id),
+    game_id   INTEGER NOT NULL REFERENCES games(id),
+    rank      INTEGER NOT NULL,
+    PRIMARY KEY (seiyuu_id, game_id)
+) WITHOUT ROWID;
+CREATE INDEX idx_game_works_game ON seiyuu_game_works(game_id);
+
 CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -102,6 +123,9 @@ def main() -> None:
     i18n = json.loads(I18N_PATH.read_text(encoding="utf-8")) if I18N_PATH.exists() else None
     series = (
         json.loads(SERIES_PATH.read_text(encoding="utf-8")) if SERIES_PATH.exists() else {}
+    )
+    games_data = (
+        json.loads(GAMES_PATH.read_text(encoding="utf-8")) if GAMES_PATH.exists() else None
     )
 
     if DB_PATH.exists():
@@ -192,6 +216,27 @@ def main() -> None:
                 ],
             )
 
+            # ---- 游戏（bgm.tv，可选数据源；系列聚类未做，series_id 暂等于自身 id）----
+            if games_data:
+                conn.executemany(
+                    "INSERT INTO games VALUES (?,?,?,?,?,?)",
+                    [
+                        (
+                            int(gid), g.get("name"), g.get("name_cn"),
+                            g.get("year"), g.get("rating_total"), int(gid),
+                        )
+                        for gid, g in games_data.get("games", {}).items()
+                    ],
+                )
+                conn.executemany(
+                    "INSERT OR IGNORE INTO seiyuu_game_works VALUES (?,?,?)",
+                    [
+                        (int(aid), gid, rank)
+                        for aid, gids in games_data.get("seiyuu_games", {}).items()
+                        for rank, gid in enumerate(gids, 1)
+                    ],
+                )
+
             # ---- 译名 ----
             if i18n:
                 rows = []
@@ -213,14 +258,14 @@ def main() -> None:
                 [
                     ("generated_at", datetime.now(timezone.utc).isoformat()),
                     ("seiyuu_count", str(len(seiyuu_list))),
-                    ("schema", "1"),
+                    ("schema", "2"),
                 ],
             )
 
         # ---- 校验输出 ----
         counts = {
             t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-            for t in ("seiyuu", "anime", "characters", "translations", "seiyuu_works", "seiyuu_roles")
+            for t in ("seiyuu", "anime", "characters", "translations", "seiyuu_works", "seiyuu_roles", "games", "seiyuu_game_works")
         }
         print(f"完成 -> {DB_PATH}")
         print(json.dumps(counts, ensure_ascii=False, indent=2))

@@ -40,6 +40,17 @@ def main() -> None:
             """
         ).fetchall()
 
+        # 游戏作品（bgm.tv id 空间，与动画分开导出；中文名直接取自 games.title_zh）
+        game_works_rows = conn.execute(
+            """
+            SELECT w.seiyuu_id, w.rank, g.id, g.title, g.title_zh,
+                   g.year, g.rating_total, g.series_id
+            FROM seiyuu_game_works w
+            JOIN games g ON g.id = w.game_id
+            ORDER BY w.seiyuu_id, w.rank
+            """
+        ).fetchall()
+
     finally:
         conn.close()
 
@@ -53,6 +64,18 @@ def main() -> None:
             "year": w["year"],
             "format": w["format"],
             "popularity": w["popularity"],
+            "series_id": w["series_id"],
+        })
+
+    # 字段命名对齐 works（title_native/popularity），前端可用同一套展示逻辑
+    game_works_by_seiyuu: dict[int, list] = {}
+    for w in game_works_rows:
+        game_works_by_seiyuu.setdefault(w["seiyuu_id"], []).append({
+            "id": w["id"],
+            "title_native": w["title"],
+            "title_zh": w["title_zh"],
+            "year": w["year"],
+            "popularity": w["rating_total"],
             "series_id": w["series_id"],
         })
 
@@ -73,6 +96,7 @@ def main() -> None:
                 "image": s["image"],
                 "url": s["url"],
                 "works": works_by_seiyuu.get(s["id"], []),
+                "game_works": game_works_by_seiyuu.get(s["id"], []),
             }
             for s in seiyuu_rows
         ],
@@ -81,8 +105,11 @@ def main() -> None:
 
     zh_names = sum(1 for s in out["seiyuu"] if s["name_zh"])
     enough = sum(1 for s in out["seiyuu"] if len(s["works"]) >= 3)
+    with_games = sum(1 for s in out["seiyuu"] if s["game_works"])
+    game_total = sum(len(s["game_works"]) for s in out["seiyuu"])
     print(f"完成 -> {OUT_PATH}")
     print(f"声优 {len(out['seiyuu'])}，有中文名 {zh_names}，作品数≥3 的 {enough}")
+    print(f"有游戏作品 {with_games} 人，游戏词条共 {game_total} 条")
 
 
 if __name__ == "__main__":
