@@ -59,7 +59,7 @@ export default function GuessInput({ guessedIds, disabled, gender, onGuess }: Pr
   }
 
   return (
-    <div className="relative mx-auto w-full max-w-md">
+    <div className="relative mx-auto w-full max-w-xl">
       <input
         type="text"
         value={query}
@@ -73,7 +73,7 @@ export default function GuessInput({ guessedIds, disabled, gender, onGuess }: Pr
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyDown={handleKeyDown}
         placeholder={disabled ? "本局已结束" : "输入声优名（中文 / 日文 / 罗马音）"}
-        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm outline-none placeholder:text-zinc-500 focus:border-emerald-500 disabled:opacity-50"
+        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3.5 text-sm outline-none placeholder:text-zinc-500 focus:border-emerald-500 disabled:opacity-50"
       />
       {open && candidates.length > 0 && (
         <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">

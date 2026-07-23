@@ -6,46 +6,118 @@ import {
   poolFor,
   seiyuuById,
   workTitle,
+  DEFAULT_SETTINGS,
   DIFFICULTY_OPTIONS,
+  GAME_STORAGE_KEY,
   GENDER_OPTIONS,
+  SETTINGS_STORAGE_KEY,
   WORKS_OPTIONS,
-  type Difficulty,
-  type GenderFilter,
+  parseSettings,
+  type GameSettings,
   type SeiyuuWithDisplay,
-  type WorksFilter,
 } from "@/lib/data";
 import { compare, type GuessResult } from "@/lib/game";
 import GuessInput from "./GuessInput";
 import GuessTable from "./GuessTable";
 
-// v5：存档新增 works（作品范围）字段
-const STORAGE_KEY = "seiyuu-game-v5";
-
 type Status = "playing" | "won" | "lost" | "gaveUp";
 
-interface SaveState {
+// 玩法规则图例的示例格样式（与结果单元格同色系；灰色给个浅底让色块可见）
+const demoCell = {
+  green: "bg-emerald-500/15 text-emerald-400",
+  yellow: "bg-amber-500/15 text-amber-300",
+  gray: "bg-zinc-800 text-zinc-400",
+};
+
+/** 规则图例的一项：字段名 + 示例色块 + 说明（抽象色块，不用真实表格行，避免误认成对局记录） */
+function RuleItem({
+  label,
+  demo,
+  note,
+  className = "w-28",
+}: {
+  label: string;
+  demo: React.ReactNode;
+  note: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="text-xs text-zinc-500">{label}</div>
+      <div className="mt-1.5 flex justify-center">{demo}</div>
+      <div className="mt-1 text-xs leading-5 text-zinc-500">{note}</div>
+    </div>
+  );
+}
+
+interface SaveState extends GameSettings {
   answerId: number;
   guesses: number[];
-  difficulty: Difficulty;
-  limit: number;
-  gender: GenderFilter;
-  works: WorksFilter;
   status: Status;
 }
 
-interface Props {
-  difficulty: Difficulty;
-  limit: number;
-  gender: GenderFilter;
-  works: WorksFilter;
-}
-
-export default function GameBoard({ difficulty, limit, gender, works }: Props) {
-  const pool = useMemo(
-    () => poolFor(difficulty, gender, works),
-    [difficulty, gender, works]
-  );
+export default function GameBoard() {
+  const [settings, setSettings] = useState<GameSettings | null>(null);
   const [state, setState] = useState<SaveState | null>(null);
+
+  const pool = useMemo(
+    () =>
+      settings ? poolFor(settings.difficulty, settings.gender, settings.works) : [],
+    [settings]
+  );
+
+  // 客户端初始化：读设置（主页「开始游戏」写入；直接访问 /play 用上次设置或默认），
+  // 存档设置一致则恢复，否则开新局。设置只在主页变更，故只需挂载时读一次
+  useEffect(() => {
+    let s = DEFAULT_SETTINGS;
+    try {
+      const rawSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (rawSettings) s = parseSettings(JSON.parse(rawSettings));
+    } catch {
+      /* 设置损坏用默认 */
+    }
+    setSettings(s);
+    const pool = poolFor(s.difficulty, s.gender, s.works);
+    const newGame: SaveState = {
+      answerId: pool[Math.floor(Math.random() * pool.length)].id,
+      guesses: [],
+      ...s,
+      status: "playing",
+    };
+    try {
+      const raw = localStorage.getItem(GAME_STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as SaveState;
+        if (
+          saved.difficulty === s.difficulty &&
+          saved.limit === s.limit &&
+          saved.gender === s.gender &&
+          saved.works === s.works &&
+          pool.some((p) => p.id === saved.answerId)
+        ) {
+          setState({
+            ...saved,
+            guesses: saved.guesses.filter((id) => seiyuuById.has(id)),
+          });
+          return;
+        }
+      }
+    } catch {
+      /* 存档损坏则开新局 */
+    }
+    setState(newGame);
+  }, []);
+
+  useEffect(() => {
+    if (state) localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(state));
+  }, [state]);
+
+  if (!settings || !state) {
+    return <p className="text-center text-zinc-500">加载中…</p>;
+  }
+
+  const { difficulty, limit, gender, works } = settings;
+  const answer = seiyuuById.get(state.answerId)!;
 
   const difficultyLabel = DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.label;
   const genderLabel = GENDER_OPTIONS.find((o) => o.key === gender)?.label;
@@ -63,49 +135,10 @@ export default function GameBoard({ difficulty, limit, gender, works }: Props) {
     };
   }
 
-  // 客户端初始化：存档与当前设置一致则恢复，否则开新局
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as SaveState;
-        if (
-          saved.difficulty === difficulty &&
-          saved.limit === limit &&
-          saved.gender === gender &&
-          saved.works === works &&
-          pool.some((s) => s.id === saved.answerId)
-        ) {
-          setState({
-            ...saved,
-            guesses: saved.guesses.filter((id) => seiyuuById.has(id)),
-          });
-          return;
-        }
-      }
-    } catch {
-      /* 存档损坏则开新局 */
-    }
-    setState(newGame());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [difficulty, limit, gender, works, pool]);
-
-  useEffect(() => {
-    if (state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
-
-  const answer = state ? seiyuuById.get(state.answerId)! : null;
-
-  const results: GuessResult[] = useMemo(() => {
-    if (!state || !answer) return [];
-    return state.guesses
-      .map((id) => compare(seiyuuById.get(id)!, answer, works))
-      .reverse(); // 最新猜测置顶
-  }, [state, answer, works]);
-
-  if (!state || !answer) {
-    return <p className="text-center text-zinc-500">加载中…</p>;
-  }
+  // 最新猜测置顶
+  const results: GuessResult[] = state.guesses
+    .map((id) => compare(seiyuuById.get(id)!, answer, works))
+    .reverse();
 
   const over = state.status !== "playing";
   const remaining = state.limit > 0 ? state.limit - state.guesses.length : null;
@@ -123,36 +156,35 @@ export default function GameBoard({ difficulty, limit, gender, works }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-zinc-400">
-        <span className="rounded border border-zinc-700 px-2 py-1 text-xs">
-          难度：{difficultyLabel}
-          {gender !== "all" && ` · ${genderLabel}`}
-          {works !== "all" && ` · ${worksLabel}`} · 答案池 {pool.length} 人
-        </span>
-        <span>
-          已猜 {state.guesses.length} 次
-          {remaining !== null && ` · 剩余 ${remaining} 次`}
-        </span>
-        {!over && (
-          <button
-            onClick={() => setState({ ...state, status: "gaveUp" })}
-            className="rounded border border-zinc-700 px-3 py-1 hover:bg-zinc-800"
+      {/* 顶栏：左返回 / 中品牌 / 右操作，纯文字样式避免信息过载 */}
+      <div className="flex items-center text-sm">
+        <div className="flex-1">
+          <Link
+            href="/"
+            className="text-zinc-400 transition-colors hover:text-zinc-100"
           >
-            认输
+            ← 返回主页
+          </Link>
+        </div>
+        <span className="text-lg font-black tracking-widest">
+          声優<span className="text-emerald-400">クイズ</span>
+        </span>
+        <div className="flex flex-1 justify-end gap-4">
+          {!over && (
+            <button
+              onClick={() => setState({ ...state, status: "gaveUp" })}
+              className="text-zinc-400 transition-colors hover:text-red-400"
+            >
+              认输
+            </button>
+          )}
+          <button
+            onClick={() => setState(newGame())}
+            className="text-zinc-400 transition-colors hover:text-zinc-100"
+          >
+            再来一局
           </button>
-        )}
-        <button
-          onClick={() => setState(newGame())}
-          className="rounded border border-zinc-700 px-3 py-1 hover:bg-zinc-800"
-        >
-          再来一局
-        </button>
-        <Link
-          href="/"
-          className="rounded border border-zinc-700 px-3 py-1 hover:bg-zinc-800"
-        >
-          返回主页
-        </Link>
+        </div>
       </div>
 
       <GuessInput
@@ -162,62 +194,116 @@ export default function GameBoard({ difficulty, limit, gender, works }: Props) {
         onGuess={guess}
       />
 
+      {/* 对局信息：设置摘要小字 + 猜测进度圆点（限次模式） */}
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+        <span>
+          {difficultyLabel}
+          {gender !== "all" && ` · ${genderLabel}`}
+          {works !== "all" && ` · ${worksLabel}`} · 答案池 {pool.length} 人
+        </span>
+        <span className="text-zinc-700">|</span>
+        {remaining !== null ? (
+          <span
+            className="flex items-center gap-1.5"
+            title={`已猜 ${state.guesses.length} / ${state.limit} 次`}
+          >
+            {Array.from({ length: state.limit }, (_, i) => (
+              <span
+                key={i}
+                className={`h-1.5 w-1.5 rounded-full ${
+                  i < state.guesses.length ? "bg-emerald-400" : "bg-zinc-700"
+                }`}
+              />
+            ))}
+            <span className="ml-1">
+              {state.guesses.length}/{state.limit}
+            </span>
+          </span>
+        ) : (
+          <span>已猜 {state.guesses.length} 次</span>
+        )}
+      </div>
+
       {!over && state.guesses.length === 0 && (
-        <div className="mx-auto max-w-3xl text-zinc-300">
-          <h2 className="mb-8 text-center text-2xl font-bold text-zinc-100">玩法规则</h2>
-          <div className="grid gap-8 sm:grid-cols-2">
-            <div>
-              <h3 className="mb-3 text-sm font-medium tracking-wide text-zinc-500">
-                对比线索
-              </h3>
-              <p className="text-base leading-7">
-                每次猜测会与答案对比六类线索：性别、出生年份、出身地、血型、
-                出道年份、出演作品。年份类线索不一致时会用 ▲▼ 提示答案的方向。
-              </p>
-            </div>
-            <div>
-              <h3 className="mb-3 text-sm font-medium tracking-wide text-zinc-500">
-                颜色含义
-              </h3>
-              <ul className="space-y-2 text-base">
-                <li className="flex items-center gap-2.5">
-                  <span className="h-3.5 w-3.5 shrink-0 rounded-sm bg-emerald-500" />
-                  绿色 = 完全一致
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="h-3.5 w-3.5 shrink-0 rounded-sm bg-amber-400" />
-                  黄色 = 接近（年份相差 ±2 / 同都道府县）
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="h-3.5 w-3.5 shrink-0 rounded-sm bg-zinc-600" />
-                  灰色 = 不匹配
-                </li>
-              </ul>
-            </div>
+        <div className="space-y-4 pt-2 text-center">
+          <div>
+            <h2 className="text-lg font-bold text-zinc-100">玩法规则</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              每次猜测会与答案对比六类线索，颜色提示接近程度
+            </p>
           </div>
-          <p className="mt-8 border-t border-zinc-800 pt-6 text-center text-sm text-zinc-400">
-            「{works === "game" ? "热门游戏" : works === "anime" ? "热门动画" : "热门作品"}」列中，
-            <span className="font-medium text-emerald-400">亮绿词条</span> = 与答案共同出演，
-            {works !== "game" && (
-              <>
-                <span className="font-medium text-amber-300">亮黄词条</span> = 同系列作品，
-              </>
-            )}
-            命中的词条会自动排到最前
-            {works === "all" && (
-              <>
-                ；作品含动画与游戏，游戏词条带
-                <span className="mx-0.5 rounded-sm bg-sky-500/25 px-0.5 text-[10px] leading-none text-sky-300">游</span>
-                标记
-              </>
-            )}
-            {works === "game" && "；本局仅游戏作品（无同系列提示）"}
+          <div className="flex flex-wrap items-start justify-center gap-x-6 gap-y-4">
+            <RuleItem
+              label="性别"
+              note="完全一致为绿色"
+              demo={
+                <span className={`rounded px-2.5 py-1 text-sm ${demoCell.green}`}>女</span>
+              }
+            />
+            <RuleItem
+              label="出生年份"
+              note="相差 ±2 为黄色，▲▼ 提示方向"
+              demo={
+                <span className={`rounded px-2.5 py-1 text-sm ${demoCell.yellow}`}>1989 ▼</span>
+              }
+            />
+            <RuleItem
+              label="出身地"
+              note="同都道府县为黄色"
+              demo={
+                <span className={`rounded px-2.5 py-1 text-sm ${demoCell.yellow}`}>Osaka</span>
+              }
+            />
+            <RuleItem
+              label="血型"
+              note="不匹配为灰色"
+              demo={
+                <span className={`rounded px-2.5 py-1 text-sm ${demoCell.gray}`}>AB</span>
+              }
+            />
+            <RuleItem
+              label="出道年份"
+              note="完全一致为绿色"
+              demo={
+                <span className={`rounded px-2.5 py-1 text-sm ${demoCell.green}`}>2003</span>
+              }
+            />
+            <RuleItem
+              label="作品词条"
+              note={
+                works === "game"
+                  ? "亮绿 = 共同出演，无同系列"
+                  : "亮绿 = 共同出演，亮黄 = 同系列"
+              }
+              className="w-52"
+              demo={
+                <span className="flex gap-1 whitespace-nowrap">
+                  <span className="rounded bg-emerald-400 px-1.5 py-0.5 text-xs font-medium text-emerald-950">
+                    共同出演
+                  </span>
+                  {works !== "game" && (
+                    <span className="rounded bg-amber-300 px-1.5 py-0.5 text-xs font-medium text-amber-950">
+                      同系列
+                    </span>
+                  )}
+                  {works !== "anime" && (
+                    <span className="rounded bg-zinc-700 px-1.5 py-0.5 text-xs text-zinc-300">
+                      <span className="mr-0.5 rounded-sm bg-sky-500/25 px-0.5 text-[10px] leading-none text-sky-300">游</span>
+                      游戏
+                    </span>
+                  )}
+                </span>
+              }
+            />
+          </div>
+          <p className="text-xs text-zinc-600">
+            命中的作品词条会自动排到最前，次数用完后揭晓答案
           </p>
         </div>
       )}
 
       {over && (
-        <div className="mx-auto max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-center">
+        <div className="mx-auto max-w-lg rounded-lg border border-zinc-700 bg-zinc-900 p-5 text-center">
           {state.status === "won" ? (
             <p className="text-lg font-bold text-emerald-400">
               猜对了！答案就是 {answer.display}

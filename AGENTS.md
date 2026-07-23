@@ -42,14 +42,14 @@ python scripts/export_web_data.py       # seiyuu.db → data/web-seiyuu.json（�
 
 - `app/` — Next.js App Router 页面
   - `layout.tsx` — 根布局（`lang="zh-CN"`，深色主题）
-  - `page.tsx` — 主页：选择难度、作品范围（动画+游戏/仅动画/仅游戏）、性别范围与猜测次数，跳转 `/play?d=...&limit=...&g=...&w=...`
-  - `play/page.tsx` — 服务端组件，校验 query 参数后渲染 `GameBoard`（用 `key` 强制换开局设置时重开一局）
+  - `page.tsx` — 主页：选择难度、作品范围（全部/仅动画/仅游戏）、性别范围与猜测次数（回填上次选择）；「开始游戏」把设置写入 localStorage 后跳转 `/play`（URL 不带参数）
+  - `play/page.tsx` — 薄壳渲染 `GameBoard`；开局设置与对局存档均由 `GameBoard` 从 localStorage 读取
   - `globals.css` — Tailwind 4 入口 + 深色配色
 - `lib/` — 纯逻辑，无 React 依赖
   - `data.ts` — 导入 `web-seiyuu.json`，定义 `Seiyuu`/`Work`/`GameWork` 类型、展示名解析（简体中文 > 日文原名 > 罗马音）、难度答案池（easy 前 100 / normal 前 250 / hard 全池，按 AniList 人气降序）；`poolFor` 按难度 + 性别范围 + 作品范围（`WorksFilter`）过滤答案池
   - `game.ts` — `compare(guess, answer, works)` 比对逻辑：精确匹配、年份 ±2 为黄色、同都道府县为黄色、共同出演作品（绿，动画与游戏各自独立求交集）与同系列作品（黄，`series_id` 相同，仅动画）；作品范围为仅动画/仅游戏时屏蔽对应类型的命中
 - `components/` — 客户端组件
-  - `GameBoard.tsx` — 对局状态机（playing / won / lost / gaveUp）、localStorage 存档恢复
+  - `GameBoard.tsx` — 对局状态机（playing / won / lost / gaveUp），自行从 localStorage 读取开局设置与存档
   - `GuessInput.tsx` — 带键盘导航（↑↓ 循环、Enter 确认、Esc 关闭）的搜索下拉，支持中文/日文/罗马音模糊匹配
   - `GuessTable.tsx` — 猜测结果表格，命中词条高亮并排到最前；游戏词条带「游」徽标
 - `scripts/` — Python 数据采集/构建脚本（见上节）
@@ -59,7 +59,7 @@ python scripts/export_web_data.py       # seiyuu.db → data/web-seiyuu.json（�
 
 - TypeScript `strict: true`，路径别名 `@/*` 指向项目根。
 - 注释用中文，倾向解释「为什么」而非复述代码；导出函数/字段常配简短 JSDoc。
-- UI 文案全中文；深色主题（`zinc-950` 底、`emerald` 强调色、`amber` 表示「接近」）。
+- UI 文案全中文；深色主题（`zinc-950` 底、`emerald` 强调色、`amber` 表示「接近」、`sky` 表示「游戏」标记），body 带极淡的 emerald/sky 径向渐变氛围光（globals.css）。
 - 组件为函数式 + Hooks；样式全部用 Tailwind 工具类，无额外 CSS 文件。
 - 图片用原生 `<img>`（外部 AniList 图片 URL，未配置 `next/image` 域名），并以 `eslint-disable-next-line @next/next/no-img-element` 注释标注。
 - 代码中引用了 ESLint 规则（如 `react-hooks/exhaustive-deps`），但项目未安装/配置 ESLint——保留这些注释即可，不要依赖 lint 命令验证。
@@ -69,7 +69,7 @@ python scripts/export_web_data.py       # seiyuu.db → data/web-seiyuu.json（�
 - **答案池过滤**：`lib/data.ts` 的 `poolFor` 只保留作品数达标（仅动画看动画、仅游戏看游戏、不限看合计，均 ≥3）且有性别和出生年份的声优，保证出题质量；`answerPool` 常量为「不限」模式的全量池。
 - **游戏数据（bgm.tv）**：AniList 无游戏类目，游戏出演来自 bgm.tv 的「角色-声优」关联（`/v0/persons/{id}/characters`，`subject_type==4`；注意 `/v0/persons/{id}/subjects` 只有 staff 职位，不含配音出演）。游戏与动画**分开存放**：独立 `games` 表、独立 `game_works` 数组，bgm subject id 与 AniList media id 是不同 id 空间（可能撞号），比对各自独立进行。中文名直接取 bgm `name_cn`，不经翻译管线。已知局限：无 bangumi_id 的声优（约 26 人）无游戏数据；R18 作品声优多用马甲独立条目，出演记录不关联本尊。
 - **系列判定**：`series_id` 由 `collect_series.py` 用并查集从 AniList relations（SEQUEL/PREQUEL/SIDE_STORY 等）聚类得出，无系列时等于作品自身 id。游戏暂无系列聚类（`series_id` 预留，等于自身 id），因此「同系列」黄色提示只对动画生效。
-- **存档**：`GameBoard` 的 `STORAGE_KEY` 带版本号（当前 `seiyuu-game-v5`）；修改存档结构时递增版本号，避免旧存档解析出错。
+- **存档**：两个 localStorage 键（常量定义在 `lib/data.ts`）：`seiyuu-settings-v1` 存开局设置（主页写入、`/play` 读取、主页回填），`seiyuu-game-v5` 存对局状态；修改存档结构时递增版本号，避免旧存档解析出错。
 - **无障碍**：难度/次数选择使用原生 radio + `peer sr-only` 模式，支持 Tab/方向键/Enter 操作，新增交互控件请保持键盘可用。
 
 ## 安全与注意事项

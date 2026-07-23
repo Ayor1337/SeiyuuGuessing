@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "声优猜谜",
+  title: "声優クイズ",
   description: "根据线索猜出今天的声优",
 };
 

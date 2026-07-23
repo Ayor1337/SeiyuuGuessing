@@ -73,7 +73,7 @@ export interface WorksOption {
 }
 
 export const WORKS_OPTIONS: WorksOption[] = [
-  { key: "all", label: "动画 + 游戏" },
+  { key: "all", label: "全部" },
   { key: "anime", label: "仅动画" },
   { key: "game", label: "仅游戏" },
 ];
@@ -89,6 +89,50 @@ function hasEnoughWorks(s: SeiyuuWithDisplay, works: WorksFilter): boolean {
 export const answerPool = seiyuuList.filter(
   (s) => hasEnoughWorks(s, "all") && s.gender && s.birth_year
 );
+
+/** 开局设置：主页选择后经 localStorage 传给 /play（URL 保持干净不带参数） */
+export interface GameSettings {
+  difficulty: Difficulty;
+  limit: number;
+  gender: GenderFilter;
+  works: WorksFilter;
+}
+
+export const DEFAULT_SETTINGS: GameSettings = {
+  difficulty: "normal",
+  limit: 8,
+  gender: "all",
+  works: "all",
+};
+
+/** localStorage 键：开局设置（主页「开始游戏」写入，/play 读取；也用于主页记住上次选择） */
+export const SETTINGS_STORAGE_KEY = "seiyuu-settings-v1";
+/** localStorage 键：对局存档（GameBoard 读写；结构变更时递增版本号） */
+export const GAME_STORAGE_KEY = "seiyuu-game-v5";
+
+const VALID_DIFFICULTY = new Set<string>(["easy", "normal", "hard"]);
+const VALID_LIMIT = new Set<number>([5, 8, 12, 0]);
+const VALID_GENDER = new Set<string>(["all", "Male", "Female"]);
+const VALID_WORKS = new Set<string>(["all", "anime", "game"]);
+
+/** 把未知来源的数据（localStorage JSON）清洗为合法开局设置，非法字段回退默认 */
+export function parseSettings(raw: unknown): GameSettings {
+  const p = (raw ?? {}) as Partial<GameSettings>;
+  return {
+    difficulty: VALID_DIFFICULTY.has(p.difficulty as string)
+      ? (p.difficulty as Difficulty)
+      : DEFAULT_SETTINGS.difficulty,
+    limit: VALID_LIMIT.has(p.limit as number)
+      ? (p.limit as number)
+      : DEFAULT_SETTINGS.limit,
+    gender: VALID_GENDER.has(p.gender as string)
+      ? (p.gender as GenderFilter)
+      : DEFAULT_SETTINGS.gender,
+    works: VALID_WORKS.has(p.works as string)
+      ? (p.works as WorksFilter)
+      : DEFAULT_SETTINGS.works,
+  };
+}
 
 export type Difficulty = "easy" | "normal" | "hard";
 
