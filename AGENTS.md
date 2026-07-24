@@ -44,8 +44,6 @@ python scripts/export_web_data.py       # seiyuu.db → data/web-seiyuu.json（�
   - `layout.tsx` — 根布局（`lang="zh-CN"`，深色主题）
   - `page.tsx` — 主页：选择难度、作品范围（全部/仅动画/仅游戏）、性别范围与猜测次数（回填上次选择）；「开始游戏」把设置写入 localStorage 后跳转 `/play`（URL 不带参数）
   - `play/page.tsx` — 薄壳渲染 `GameBoard`；开局设置与对局存档均由 `GameBoard` 从 localStorage 读取
-  - `admin/page.tsx` — 数据后台（词条级表格）：按声优名/作品名（tag）过滤、分页浏览、单行编辑、批量删除、添加词条；不从主页链接，手动访问 `/admin`
-  - `api/admin/works/route.ts` — 后台写接口（`action: delete / update / add`），直接读写 `data/web-seiyuu.json`；仅允许 localhost Host，原子写回（tmp + rename），读失败自动重试（dev 热更新竞争）
   - `globals.css` — Tailwind 4 入口 + 深色配色
 - `lib/` — 纯逻辑，无 React 依赖
   - `data.ts` — 导入 `web-seiyuu.json`，定义 `Seiyuu`/`Work`/`GameWork` 类型、展示名解析（简体中文 > 日文原名 > 罗马音）、难度答案池（easy 前 100 / normal 前 250 / hard 全池，按 AniList 人气降序）；`poolFor` 按难度 + 性别范围 + 作品范围（`WorksFilter`）过滤答案池
@@ -77,5 +75,5 @@ python scripts/export_web_data.py       # seiyuu.db → data/web-seiyuu.json（�
 ## 安全与注意事项
 
 - 项目无密钥、无环境变量；AniList 与 bgm.tv API 均为匿名公开接口，采集脚本礼貌限速（间隔 0.4s~2.5s，带 429 重试；AniList 当前限速 30 req/min）并声明 User-Agent。
-- `data/` 下的 JSON/DB 是生成产物。**手动纠错请用 `/admin` 后台**（`npm run dev` 或 `start` 后访问），改动直接写入 `web-seiyuu.json`；注意**重跑数据管线（`export_web_data.py`）会覆盖手动修改**，大范围修正请改采集/构建脚本后重跑。后台 API 仅允许 localhost Host，部署到公网前必须删除 `app/api/admin/` 与 `app/admin/` 或加鉴权。
+- `data/` 下的 JSON/DB 是生成产物。**手动纠错请切到 `admin-manage` 分支用 `/admin` 后台**（`npm run dev` 或 `start` 后访问），改动直接写入 `web-seiyuu.json`；注意**重跑数据管线（`export_web_data.py`）会覆盖手动修改**，大范围修正请改采集/构建脚本后重跑。分支分工：`main` 是部署版本（已移除 `app/admin/` 与 `app/api/admin/`，因为 Vercel 等 serverless 环境文件系统只读、写文件不生效）；`admin-manage` 保留带后台的完整版本，用于本地数据维护。
 - 无测试框架：改动后跑 `npm run build` 确认类型与构建通过，涉及游戏逻辑时手动开一局验证。
