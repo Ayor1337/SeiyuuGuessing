@@ -111,6 +111,15 @@ CREATE TABLE seiyuu_game_works (
 ) WITHOUT ROWID;
 CREATE INDEX idx_game_works_game ON seiyuu_game_works(game_id);
 
+-- 声优在游戏中的配音角色名（悬浮提示用，bgm 原名多为日文；rank 按 API 返回顺序）
+CREATE TABLE seiyuu_game_roles (
+    seiyuu_id      INTEGER NOT NULL REFERENCES seiyuu(id),
+    game_id        INTEGER NOT NULL REFERENCES games(id),
+    character_name TEXT NOT NULL,
+    rank           INTEGER NOT NULL,
+    PRIMARY KEY (seiyuu_id, game_id, character_name)
+) WITHOUT ROWID;
+
 CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -236,6 +245,15 @@ def main() -> None:
                         for rank, gid in enumerate(gids, 1)
                     ],
                 )
+                conn.executemany(
+                    "INSERT OR IGNORE INTO seiyuu_game_roles VALUES (?,?,?,?)",
+                    [
+                        (int(aid), int(gid), name, rank)
+                        for aid, game_roles in games_data.get("seiyuu_game_roles", {}).items()
+                        for gid, names in game_roles.items()
+                        for rank, name in enumerate(names, 1)
+                    ],
+                )
 
             # ---- 译名 ----
             if i18n:
@@ -258,14 +276,14 @@ def main() -> None:
                 [
                     ("generated_at", datetime.now(timezone.utc).isoformat()),
                     ("seiyuu_count", str(len(seiyuu_list))),
-                    ("schema", "2"),
+                    ("schema", "3"),
                 ],
             )
 
         # ---- 校验输出 ----
         counts = {
             t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-            for t in ("seiyuu", "anime", "characters", "translations", "seiyuu_works", "seiyuu_roles", "games", "seiyuu_game_works")
+            for t in ("seiyuu", "anime", "characters", "translations", "seiyuu_works", "seiyuu_roles", "games", "seiyuu_game_works", "seiyuu_game_roles")
         }
         print(f"完成 -> {DB_PATH}")
         print(json.dumps(counts, ensure_ascii=False, indent=2))

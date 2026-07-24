@@ -10,6 +10,8 @@ export interface Work {
   popularity: number | null;
   /** 系列簇 id，同系列作品相同（无系列时等于自身 id） */
   series_id: number;
+  /** 该声优在本作配音的角色名（已解析展示名，最多 3 个；无数据时缺省） */
+  characters?: string[];
 }
 
 /**
@@ -24,6 +26,8 @@ export interface GameWork {
   year: number | null;
   popularity: number | null;
   series_id: number;
+  /** 该声优在本作配音的角色名（bgm 原名多为日文，最多 3 个；无数据时缺省） */
+  characters?: string[];
 }
 
 export interface Seiyuu {
@@ -96,6 +100,8 @@ export interface GameSettings {
   limit: number;
   gender: GenderFilter;
   works: WorksFilter;
+  /** 悬浮作品词条时显示该声优配音的角色（仅展示，不影响对局逻辑） */
+  showCharacters: boolean;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -103,6 +109,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   limit: 8,
   gender: "all",
   works: "all",
+  showCharacters: true,
 };
 
 /** localStorage 键：开局设置（主页「开始游戏」写入，/play 读取；也用于主页记住上次选择） */
@@ -131,6 +138,10 @@ export function parseSettings(raw: unknown): GameSettings {
     works: VALID_WORKS.has(p.works as string)
       ? (p.works as WorksFilter)
       : DEFAULT_SETTINGS.works,
+    showCharacters:
+      typeof p.showCharacters === "boolean"
+        ? p.showCharacters
+        : DEFAULT_SETTINGS.showCharacters,
   };
 }
 

@@ -17,7 +17,8 @@
     python scripts/collect_games.py [--interval 0.4] [--limit N]
 
 输出:
-    data/games.json        {"games": {bgm_id: 作品信息}, "seiyuu_games": {anilist_id: [bgm_id 按人气降序]}}
+    data/games.json        {"games": {bgm_id: 作品信息}, "seiyuu_games": {anilist_id: [bgm_id 按人气降序]},
+                            "seiyuu_game_roles": {anilist_id: {bgm_id: [角色名（截前 3）]}}}
     data/games.cache.json  API 响应缓存，中断后重跑自动续传
 """
 
@@ -46,6 +47,8 @@ GAME_TYPE = 4  # bgm.tv subject type: 游戏
 # 每个声优保留的热门游戏上限（按 bgm 评分人数降序截）。games 会进前端 bundle，
 # 15 部约增加 1MB，与动画 WORKS_CAP=30 同理是体积与覆盖的折中
 GAME_WORKS_CAP = 15
+# 每部游戏保留的角色名上限（一人多役时按 API 顺序截断，控制 bundle 体积）
+ROLES_PER_GAME_CAP = 3
 # 一人多役合并时取最佳戏份（bgm staff 值为 主角/配角/客串）
 STAFF_RANK = {"主角": 3, "配角": 2, "客串": 1}
 
@@ -153,6 +156,9 @@ def main() -> None:
     # ---- 阶段 2: 聚合游戏候选（一人多役合并），抓取游戏详情 ----
     # candidates: anilist_id -> {bgm_subject_id: 最佳戏份 rank}
     candidates: dict[int, dict[int, int]] = {}
+    # role_names: anilist_id -> {bgm_subject_id: [角色名]}，按 API 返回顺序去重，
+    # 供「悬浮显示配音角色」用（作品词条的 title 提示）
+    role_names: dict[int, dict[int, list[str]]] = {}
     for aid, pid in persons:
         for c in cache.data["person_characters"].get(str(pid)) or []:
             if c.get("subject_type") != GAME_TYPE or not c.get("subject_id"):
@@ -160,6 +166,11 @@ def main() -> None:
             games = candidates.setdefault(aid, {})
             gid = c["subject_id"]
             games[gid] = max(games.get(gid, 0), STAFF_RANK.get(c.get("staff") or "", 0))
+            name = c.get("name")
+            if name:
+                names = role_names.setdefault(aid, {}).setdefault(gid, [])
+                if name not in names:
+                    names.append(name)
 
     all_gids = sorted({gid for m in candidates.values() for gid in m})
     todo_gids = [g for g in all_gids if str(g) not in cache.data["game_subjects"]]
@@ -186,6 +197,7 @@ def main() -> None:
     subjects = cache.data["game_subjects"]
     games_out: dict[str, dict] = {}
     seiyuu_games: dict[str, list[int]] = {}
+    seiyuu_game_roles: dict[str, dict[str, list[str]]] = {}
     for aid, game_map in candidates.items():
         ranked = sorted(
             game_map, key=lambda g: -(subjects.get(str(g), {}).get("rating_total") or 0)
@@ -194,6 +206,10 @@ def main() -> None:
         if not top:
             continue
         seiyuu_games[str(aid)] = top
+        # 只保留截断后 top 游戏的角色名（随 seiyuu_games 一起进前端 bundle）
+        roles = {str(gid): names[:ROLES_PER_GAME_CAP] for gid in top if (names := role_names.get(aid, {}).get(gid))}
+        if roles:
+            seiyuu_game_roles[str(aid)] = roles
         for gid in top:
             if str(gid) not in games_out:
                 games_out[str(gid)] = subjects[str(gid)]
@@ -217,6 +233,9 @@ def main() -> None:
         "games": dict(sorted(games_out.items(), key=lambda x: int(x[0]))),
         "seiyuu_games": dict(
             sorted(seiyuu_games.items(), key=lambda x: int(x[0]))
+        ),
+        "seiyuu_game_roles": dict(
+            sorted(seiyuu_game_roles.items(), key=lambda x: int(x[0]))
         ),
     }
     OUT_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")

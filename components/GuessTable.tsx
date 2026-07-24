@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { genderZh, prefectureOf, workTitle, type WorksFilter } from "@/lib/data";
 import type { FieldResult, GuessResult } from "@/lib/game";
 
@@ -7,6 +8,19 @@ const td = {
   yellow: "bg-amber-500/15 text-amber-300",
   gray: "text-zinc-300",
 };
+
+/** 悬浮提示文本：首行年份（游戏带「· 游戏」），有角色数据时追加一行「饰：…」；都没内容则 null */
+function chipTipText(
+  year: number | null,
+  characters: string[] | undefined,
+  isGame = false
+): string | null {
+  const lines: string[] = [];
+  if (year) lines.push(isGame ? `${year} 年 · 游戏` : `${year} 年`);
+  else if (isGame) lines.push("游戏");
+  if (characters?.length) lines.push(`饰：${characters.join("、")}`);
+  return lines.length ? lines.join("\n") : null;
+}
 
 function Cell({
   result,
@@ -27,10 +41,21 @@ function Cell({
 export default function GuessTable({
   results,
   works,
+  showCharacters,
 }: {
   results: GuessResult[];
   works: WorksFilter;
+  /** 主页开关：悬停作品词条时显示配音角色（关闭后词条无任何悬浮提示） */
+  showCharacters: boolean;
 }) {
+  // 自定义悬浮框：fixed 定位 + 词条视口坐标，避开表格 overflow-x-auto 对绝对定位气泡的裁切
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const closeTip = () => setTip(null);
+  function openTip(e: React.MouseEvent<HTMLElement>, text: string | null) {
+    if (!showCharacters || !text) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    setTip({ text, x: r.left + r.width / 2, y: r.top });
+  }
   if (results.length === 0) return null;
   // 作品范围：仅动画不渲染游戏段，仅游戏不渲染动画段
   const showAnime = works !== "game";
@@ -38,7 +63,7 @@ export default function GuessTable({
   const worksHeader =
     works === "game" ? "热门游戏" : works === "anime" ? "热门动画" : "热门作品";
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" onScroll={closeTip}>
       <table className="w-full border-collapse text-zinc-100">
         <thead>
           <tr className="border-b border-zinc-700 text-xs text-zinc-400">
@@ -96,7 +121,8 @@ export default function GuessTable({
                       displayWorks.slice(0, 8).map((w) => (
                         <span
                           key={w.id}
-                          title={w.year ? `${w.year} 年` : undefined}
+                          onMouseEnter={(e) => openTip(e, chipTipText(w.year, w.characters))}
+                          onMouseLeave={closeTip}
                           className={`rounded px-1.5 py-0.5 text-xs ${
                             sharedIds.has(w.id)
                               ? "bg-emerald-400 font-medium text-emerald-950"
@@ -114,7 +140,8 @@ export default function GuessTable({
                         return (
                           <span
                             key={`g-${g.id}`}
-                            title={g.year ? `${g.year} 年 · 游戏` : "游戏"}
+                            onMouseEnter={(e) => openTip(e, chipTipText(g.year, g.characters, true))}
+                            onMouseLeave={closeTip}
                             className={`rounded px-1.5 py-0.5 text-xs ${
                               hit
                                 ? "bg-emerald-400 font-medium text-emerald-950"
@@ -141,6 +168,15 @@ export default function GuessTable({
           })}
         </tbody>
       </table>
+      {tip && (
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-50 max-w-xs -translate-x-1/2 -translate-y-full rounded-md bg-zinc-800 px-2.5 py-1.5 text-center text-xs leading-relaxed whitespace-pre-line text-zinc-100 shadow-lg ring-1 ring-zinc-600"
+          style={{ left: tip.x, top: tip.y - 6 }}
+        >
+          {tip.text}
+        </div>
+      )}
     </div>
   );
 }

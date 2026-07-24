@@ -116,7 +116,7 @@ export default function GameBoard() {
     return <p className="text-center text-zinc-500">加载中…</p>;
   }
 
-  const { difficulty, limit, gender, works } = settings;
+  const { difficulty, limit, gender, works, showCharacters } = settings;
   const answer = seiyuuById.get(state.answerId)!;
 
   const difficultyLabel = DIFFICULTY_OPTIONS.find((o) => o.key === difficulty)?.label;
@@ -131,6 +131,7 @@ export default function GameBoard() {
       limit,
       gender,
       works,
+      showCharacters,
       status: "playing",
     };
   }
@@ -363,7 +364,7 @@ export default function GameBoard() {
         </div>
       )}
 
-      <GuessTable results={results} works={works} />
+      <GuessTable results={results} works={works} showCharacters={showCharacters} />
     </div>
   );
 }

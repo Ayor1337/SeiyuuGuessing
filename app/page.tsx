@@ -84,6 +84,7 @@ export default function Home() {
   const [limit, setLimit] = useState(DEFAULT_SETTINGS.limit);
   const [gender, setGender] = useState<GenderFilter>(DEFAULT_SETTINGS.gender);
   const [works, setWorks] = useState<WorksFilter>(DEFAULT_SETTINGS.works);
+  const [showCharacters, setShowCharacters] = useState(DEFAULT_SETTINGS.showCharacters);
 
   // 挂载时回填上次选择（「开始游戏」写入 localStorage 的设置）
   useEffect(() => {
@@ -95,6 +96,7 @@ export default function Home() {
         setLimit(s.limit);
         setGender(s.gender);
         setWorks(s.works);
+        setShowCharacters(s.showCharacters);
       }
     } catch {
       /* 损坏则用默认 */
@@ -105,7 +107,7 @@ export default function Home() {
   function startGame() {
     localStorage.setItem(
       SETTINGS_STORAGE_KEY,
-      JSON.stringify({ difficulty, limit, gender, works })
+      JSON.stringify({ difficulty, limit, gender, works, showCharacters })
     );
     localStorage.removeItem(GAME_STORAGE_KEY);
     router.push("/play");
@@ -221,6 +223,25 @@ export default function Home() {
           onChange={setLimit}
         />
       </div>
+
+      {/* 悬浮显示配音角色：原生 checkbox + peer 开关样式，与其他控件一样键盘可用 */}
+      <label className="mb-10 flex cursor-pointer items-center gap-3">
+        <input
+          type="checkbox"
+          checked={showCharacters}
+          onChange={(e) => setShowCharacters(e.target.checked)}
+          className="peer sr-only"
+        />
+        <div
+          className={`relative h-6 w-11 shrink-0 rounded-full bg-zinc-700 transition-colors peer-checked:bg-emerald-600 ${focusRing} after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-zinc-100 after:transition-transform peer-checked:after:translate-x-5`}
+        />
+        <span>
+          <span className="block text-sm text-zinc-300">悬浮显示配音角色</span>
+          <span className="block text-xs text-zinc-500">
+            鼠标悬停作品词条时，显示 TA 在这部作品中配音的角色
+          </span>
+        </span>
+      </label>
 
       <button
         onClick={startGame}

@@ -13,6 +13,9 @@ ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "seiyuu.db"
 OUT_PATH = ROOT / "data" / "web-seiyuu.json"
 
+# 每部作品导出的角色名上限（控制 bundle 体积，一部多役取前 3 已够提示）
+CHARACTERS_CAP = 3
+
 
 def main() -> None:
     conn = sqlite3.connect(DB_PATH)
@@ -40,6 +43,30 @@ def main() -> None:
             """
         ).fetchall()
 
+        # 动画配音角色（悬浮提示用）：译名解析 zh-Hans > 日文原名 > 罗马音，
+        # 按 seiyuu_roles.rank（角色人气）排序；anime_id 可能为 NULL，直接排除
+        anime_roles_rows = conn.execute(
+            """
+            SELECT r.seiyuu_id, r.anime_id, r.rank,
+                   COALESCE(t.name, c.name_native, c.name) AS char_name
+            FROM seiyuu_roles r
+            JOIN characters c ON c.id = r.character_id
+            LEFT JOIN translations t
+              ON t.entity_type = 'character' AND t.entity_id = c.id AND t.lang = 'zh-Hans'
+            WHERE r.anime_id IS NOT NULL
+            ORDER BY r.seiyuu_id, r.anime_id, r.rank
+            """
+        ).fetchall()
+
+        # 游戏配音角色（bgm 原名，多为日文；采集时已按 API 顺序排好 rank）
+        game_roles_rows = conn.execute(
+            """
+            SELECT seiyuu_id, game_id, character_name
+            FROM seiyuu_game_roles
+            ORDER BY seiyuu_id, game_id, rank
+            """
+        ).fetchall()
+
         # 游戏作品（bgm.tv id 空间，与动画分开导出；中文名直接取自 games.title_zh）
         game_works_rows = conn.execute(
             """
@@ -54,9 +81,24 @@ def main() -> None:
     finally:
         conn.close()
 
+    # (seiyuu_id, work_id) -> 角色名列表；空数组不导出以省体积（前端按可选字段处理）
+    anime_chars: dict[tuple[int, int], list[str]] = {}
+    for r in anime_roles_rows:
+        key = (r["seiyuu_id"], r["anime_id"])
+        names = anime_chars.setdefault(key, [])
+        if r["char_name"] and r["char_name"] not in names and len(names) < CHARACTERS_CAP:
+            names.append(r["char_name"])
+
+    game_chars: dict[tuple[int, int], list[str]] = {}
+    for r in game_roles_rows:
+        key = (r["seiyuu_id"], r["game_id"])
+        names = game_chars.setdefault(key, [])
+        if len(names) < CHARACTERS_CAP:
+            names.append(r["character_name"])
+
     works_by_seiyuu: dict[int, list] = {}
     for w in works_rows:
-        works_by_seiyuu.setdefault(w["seiyuu_id"], []).append({
+        entry = {
             "id": w["id"],
             "title_native": w["title_native"],
             "title_romaji": w["title_romaji"],
@@ -65,19 +107,27 @@ def main() -> None:
             "format": w["format"],
             "popularity": w["popularity"],
             "series_id": w["series_id"],
-        })
+        }
+        chars = anime_chars.get((w["seiyuu_id"], w["id"]))
+        if chars:
+            entry["characters"] = chars
+        works_by_seiyuu.setdefault(w["seiyuu_id"], []).append(entry)
 
     # 字段命名对齐 works（title_native/popularity），前端可用同一套展示逻辑
     game_works_by_seiyuu: dict[int, list] = {}
     for w in game_works_rows:
-        game_works_by_seiyuu.setdefault(w["seiyuu_id"], []).append({
+        entry = {
             "id": w["id"],
             "title_native": w["title"],
             "title_zh": w["title_zh"],
             "year": w["year"],
             "popularity": w["rating_total"],
             "series_id": w["series_id"],
-        })
+        }
+        chars = game_chars.get((w["seiyuu_id"], w["id"]))
+        if chars:
+            entry["characters"] = chars
+        game_works_by_seiyuu.setdefault(w["seiyuu_id"], []).append(entry)
 
     out = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -107,9 +157,16 @@ def main() -> None:
     enough = sum(1 for s in out["seiyuu"] if len(s["works"]) >= 3)
     with_games = sum(1 for s in out["seiyuu"] if s["game_works"])
     game_total = sum(len(s["game_works"]) for s in out["seiyuu"])
+    work_total = sum(len(s["works"]) for s in out["seiyuu"])
+    work_chars = sum(1 for s in out["seiyuu"] for w in s["works"] if w.get("characters"))
+    game_chars_n = sum(1 for s in out["seiyuu"] for g in s["game_works"] if g.get("characters"))
     print(f"完成 -> {OUT_PATH}")
     print(f"声优 {len(out['seiyuu'])}，有中文名 {zh_names}，作品数≥3 的 {enough}")
     print(f"有游戏作品 {with_games} 人，游戏词条共 {game_total} 条")
+    print(
+        f"带角色名：动画词条 {work_chars}/{work_total} "
+        f"({work_chars / work_total:.0%})，游戏词条 {game_chars_n}/{game_total}"
+    )
 
 
 if __name__ == "__main__":
