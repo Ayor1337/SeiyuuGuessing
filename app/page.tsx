@@ -240,6 +240,9 @@ export default function Home() {
           <span className="block text-xs text-zinc-500">
             鼠标悬停作品词条时，显示 TA 在这部作品中配音的角色
           </span>
+          <span className="mt-0.5 block text-xs text-zinc-600">
+            角色数据来自 AniList / bgm.tv 社区贡献，可能有误或不全
+          </span>
         </span>
       </label>
 
