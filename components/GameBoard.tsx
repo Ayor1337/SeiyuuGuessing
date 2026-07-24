@@ -345,6 +345,21 @@ export default function GameBoard() {
               )}
             </div>
           </div>
+          {/* 结束后的快捷操作：沿用当前设置重开，或回主页调整设置 */}
+          <div className="mt-4 flex justify-center gap-3">
+            <button
+              onClick={() => setState(newGame())}
+              className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 transition-colors hover:bg-emerald-400"
+            >
+              再来一局
+            </button>
+            <Link
+              href="/"
+              className="rounded-md border border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-400 hover:text-zinc-100"
+            >
+              回到主菜单
+            </Link>
+          </div>
         </div>
       )}
 
