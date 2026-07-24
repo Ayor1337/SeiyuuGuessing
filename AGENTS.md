@@ -69,7 +69,7 @@ python scripts/export_web_data.py       # seiyuu.db → data/web-seiyuu.json（�
 - **答案池过滤**：`lib/data.ts` 的 `poolFor` 只保留作品数达标（仅动画看动画、仅游戏看游戏、不限看合计，均 ≥3）且有性别和出生年份的声优，保证出题质量；`answerPool` 常量为「不限」模式的全量池。
 - **游戏数据（bgm.tv）**：AniList 无游戏类目，游戏出演来自 bgm.tv 的「角色-声优」关联（`/v0/persons/{id}/characters`，`subject_type==4`；注意 `/v0/persons/{id}/subjects` 只有 staff 职位，不含配音出演）。游戏与动画**分开存放**：独立 `games` 表、独立 `game_works` 数组，bgm subject id 与 AniList media id 是不同 id 空间（可能撞号），比对各自独立进行。中文名直接取 bgm `name_cn`，不经翻译管线。已知局限：无 bangumi_id 的声优（约 26 人）无游戏数据；R18 作品声优多用马甲独立条目，出演记录不关联本尊。
 - **系列判定**：`series_id` 由 `collect_series.py` 用并查集从 AniList relations（SEQUEL/PREQUEL/SIDE_STORY 等）聚类得出，无系列时等于作品自身 id。游戏暂无系列聚类（`series_id` 预留，等于自身 id），因此「同系列」黄色提示只对动画生效。
-- **存档**：两个 localStorage 键（常量定义在 `lib/data.ts`）：`seiyuu-settings-v1` 存开局设置（主页写入、`/play` 读取、主页回填），`seiyuu-game-v5` 存对局状态；修改存档结构时递增版本号，避免旧存档解析出错。
+- **存档**：两个 localStorage 键（常量定义在 `lib/data.ts`）：`seiyuu-settings-v1` 存开局设置（主页任何选项变更即时写入，挂载时回填，`/play` 读取），`seiyuu-game-v5` 存对局状态；修改存档结构时递增版本号，避免旧存档解析出错。
 - **无障碍**：难度/次数选择使用原生 radio + `peer sr-only` 模式，支持 Tab/方向键/Enter 操作，新增交互控件请保持键盘可用。
 
 ## 安全与注意事项

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   answerPool,
@@ -86,7 +86,8 @@ export default function Home() {
   const [works, setWorks] = useState<WorksFilter>(DEFAULT_SETTINGS.works);
   const [showCharacters, setShowCharacters] = useState(DEFAULT_SETTINGS.showCharacters);
 
-  // 挂载时回填上次选择（「开始游戏」写入 localStorage 的设置）
+  // 挂载时回填上次选择（「开始游戏」写入或选择变更时即时持久化的设置）
+  const hydrated = useRef(false);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -101,7 +102,17 @@ export default function Home() {
     } catch {
       /* 损坏则用默认 */
     }
+    hydrated.current = true;
   }, []);
+
+  // 任何选项变更即时持久化，下次进入主页自动恢复（无需点开始游戏）
+  useEffect(() => {
+    if (!hydrated.current) return;
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ difficulty, limit, gender, works, showCharacters })
+    );
+  }, [difficulty, limit, gender, works, showCharacters]);
 
   // 设置经 localStorage 传递（/play 的 URL 保持干净）；清掉旧存档保证开新局
   function startGame() {
