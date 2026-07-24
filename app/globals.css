@@ -12,3 +12,31 @@ body {
     radial-gradient(ellipse 40% 30% at 85% 110%, rgb(56 189 248 / 0.05), transparent);
   background-attachment: fixed;
 }
+
+/* 悬浮提示框锁定时的「光剑」动画：亮边从顶部中点顺时针绕边框逐渐延长，
+   直至整圈变亮（无发光，只是边框本身变亮）。@property 注册后自定义属性才可过渡动画 */
+@property --tooltip-p {
+  syntax: "<percentage>";
+  initial-value: 0%;
+  inherits: false;
+}
+
+.tooltip-ignite {
+  /* 三层背景：内层实色填充（padding-box），中层亮绿扫描弧（border-box），底层暗灰边框（border-box） */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgb(39 39 42), rgb(39 39 42)) padding-box,
+    conic-gradient(from -90deg at 50% 0, rgb(110 231 183) var(--tooltip-p), transparent var(--tooltip-p))
+      border-box,
+    linear-gradient(rgb(82 82 91), rgb(82 82 91)) border-box;
+  animation: tooltip-extend 0.2s linear forwards;
+}
+
+@keyframes tooltip-extend {
+  from {
+    --tooltip-p: 0%;
+  }
+  to {
+    --tooltip-p: 100%;
+  }
+}
